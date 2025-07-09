@@ -51,11 +51,11 @@ def load_data_from_github():
     Replace the URL below with your actual GitHub CSV file
     """
     # REPLACE THIS URL with your actual GitHub raw CSV file URL
-    github_url = "https://raw.githubusercontent.com/yourusername/yourrepo/main/itn_data.csv"
+    github_url = "SBD reconciliation.xlsx"
     
     try:
         # Load from GitHub
-        df = pd.read_csv(github_url)
+        df = pd.read_excel(github_url)
         
         # Define your actual column names mapping
         expected_columns = {
