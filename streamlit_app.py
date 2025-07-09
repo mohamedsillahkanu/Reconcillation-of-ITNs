@@ -48,16 +48,16 @@ st.markdown("""
 def load_data_from_github():
     """
     Load ITN data from GitHub repository
-    Modify the URL below to point to your actual GitHub CSV file
+    Replace the URL below with your actual GitHub CSV file
     """
-    # Replace this URL with your actual GitHub raw CSV file URL
+    # REPLACE THIS URL with your actual GitHub raw CSV file URL
     github_url = "https://raw.githubusercontent.com/yourusername/yourrepo/main/itn_data.csv"
     
     try:
-        # Try to load from GitHub
+        # Load from GitHub
         df = pd.read_csv(github_url)
         
-        # Define your actual column names
+        # Define your actual column names mapping
         expected_columns = {
             'Total number of ITNs received from PHU after the additional ITNs received': 'Total ITNs Received',
             'Total ITNs distributed': 'Total ITNs Distributed',
@@ -67,9 +67,9 @@ def load_data_from_github():
         # Check if the expected columns exist
         missing_columns = [col for col in expected_columns.keys() if col not in df.columns]
         if missing_columns:
-            st.error(f"Missing required columns: {missing_columns}")
-            st.info("Expected columns: " + ", ".join(expected_columns.keys()))
-            return create_sample_data()
+            st.error(f"❌ Missing required columns: {missing_columns}")
+            st.info("📋 Expected columns: " + ", ".join(expected_columns.keys()))
+            st.stop()
         
         # Rename columns for easier handling
         df = df.rename(columns=expected_columns)
@@ -78,8 +78,8 @@ def load_data_from_github():
         admin_columns = ['District', 'Chiefdom', 'PHU/PPS']
         missing_admin = [col for col in admin_columns if col not in df.columns]
         if missing_admin:
-            st.error(f"Missing administrative columns: {missing_admin}")
-            return create_sample_data()
+            st.error(f"❌ Missing administrative columns: {missing_admin}")
+            st.stop()
         
         # Calculate distribution rate
         df['Distribution Rate (%)'] = (df['Total ITNs Distributed'] / df['Total ITNs Received'] * 100).round(1)
@@ -96,48 +96,25 @@ def load_data_from_github():
                 df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
         
         # Data validation check
-        calculated_remaining = df['Total ITNs Received'] - df['Total ITNs Distributed']
-        if not calculated_remaining.equals(df['Total ITNs Remaining']):
-            st.warning("⚠️ Data validation: Some records show Remaining ≠ (Received - Distributed)")
+        validation_issues = 0
+        for idx, row in df.iterrows():
+            expected_remaining = row['Total ITNs Received'] - row['Total ITNs Distributed']
+            if abs(expected_remaining - row['Total ITNs Remaining']) > 0.1:  # Allow for small rounding differences
+                validation_issues += 1
+        
+        if validation_issues > 0:
+            st.warning(f"⚠️ Data validation: {validation_issues} records show inconsistent calculations (Remaining ≠ Received - Distributed)")
         
         st.success(f"✅ Successfully loaded {len(df)} records from GitHub")
         return df
         
+    except FileNotFoundError:
+        st.error("❌ GitHub file not found. Please check your URL.")
+        st.stop()
     except Exception as e:
         st.error(f"❌ Error loading data from GitHub: {str(e)}")
-        st.info("Using sample data instead. Please check your GitHub URL and file format.")
-        return create_sample_data()
-
-def create_sample_data():
-    """Create sample data matching your simplified structure"""
-    np.random.seed(42)
-    
-    districts = ["Western Area Urban", "Western Area Rural", "Bo", "Kenema", "Kailahun", "Kono", "Bombali", "Port Loko", "Moyamba", "Bonthe"]
-    data = []
-    
-    for district in districts:
-        for i in range(np.random.randint(3, 6)):
-            chiefdom = f"{district} Chiefdom {i+1}"
-            for j in range(np.random.randint(2, 4)):
-                phu = f"PHU {district[:3]}-{i+1}-{j+1}"
-                
-                # Generate realistic data
-                total_received = np.random.randint(800, 2500)
-                distributed = np.random.randint(int(total_received * 0.6), int(total_received * 0.95))
-                remaining = total_received - distributed
-                
-                data.append({
-                    'District': district,
-                    'Chiefdom': chiefdom,
-                    'PHU/PPS': phu,
-                    'Total ITNs Received': total_received,
-                    'Total ITNs Distributed': distributed,
-                    'Total ITNs Remaining': remaining,
-                    'Distribution Rate (%)': round((distributed / total_received) * 100, 1),
-                    'Last Updated': datetime.now() - timedelta(days=np.random.randint(1, 7))
-                })
-    
-    return pd.DataFrame(data)
+        st.error("Please check your GitHub URL and ensure the file is publicly accessible.")
+        st.stop()
 
 # Load data
 df = load_data_from_github()
