@@ -43,81 +43,100 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Load data from GitHub
+# Load data from URL
 @st.cache_data
-def load_data_from_github():
+def load_data_from_url():
     """
-    Load ITN data from GitHub repository
-    Replace the URL below with your actual GitHub CSV file
+    Load ITN data from Excel file URL
     """
-    # REPLACE THIS URL with your actual GitHub raw CSV file URL
-    github_url = "SBD reconciliation.xlsx"
+    # Excel file URL
+    excel_url = "https://raw.githubusercontent.com/yourusername/yourrepo/main/SBD%20reconciliation.xlsx"
     
     try:
-        # Load from GitHub
-        df = pd.read_excel(github_url)
+        # Load Excel file from URL
+        df = pd.read_excel(excel_url)
         
-        # Define your actual column names mapping
-        expected_columns = {
-            'Total number of ITNs received from PHU after the additional ITNs received': 'Total ITNs Received',
-            'Total ITNs distributed': 'Total ITNs Distributed',
-            'Total ITNs remaining after distribution': 'Total ITNs Remaining'
-        }
+        st.success(f"✅ Successfully loaded {len(df)} records from Excel file")
         
-        # Check if the expected columns exist
-        missing_columns = [col for col in expected_columns.keys() if col not in df.columns]
-        if missing_columns:
-            st.error(f"❌ Missing required columns: {missing_columns}")
-            st.info("📋 Expected columns: " + ", ".join(expected_columns.keys()))
-            st.stop()
+        # Display column names for debugging
+        st.info(f"📋 Available columns: {', '.join(df.columns.tolist())}")
         
-        # Rename columns for easier handling
-        df = df.rename(columns=expected_columns)
+        # Show first few rows to understand structure
+        with st.expander("🔍 Preview of loaded data"):
+            st.dataframe(df.head())
         
-        # Ensure administrative columns exist
-        admin_columns = ['District', 'Chiefdom', 'PHU/PPS']
-        missing_admin = [col for col in admin_columns if col not in df.columns]
-        if missing_admin:
-            st.error(f"❌ Missing administrative columns: {missing_admin}")
-            st.stop()
-        
-        # Calculate distribution rate
-        df['Distribution Rate (%)'] = (df['Total ITNs Distributed'] / df['Total ITNs Received'] * 100).round(1)
-        
-        # Add last updated column if it doesn't exist
-        if 'Last Updated' not in df.columns:
-            df['Last Updated'] = datetime.now()
-        
-        # Ensure data types are correct
-        numeric_columns = ['Total ITNs Received', 'Total ITNs Distributed', 'Total ITNs Remaining', 'Distribution Rate (%)']
-        
-        for col in numeric_columns:
-            if col in df.columns:
-                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
-        
-        # Data validation check
-        validation_issues = 0
-        for idx, row in df.iterrows():
-            expected_remaining = row['Total ITNs Received'] - row['Total ITNs Distributed']
-            if abs(expected_remaining - row['Total ITNs Remaining']) > 0.1:  # Allow for small rounding differences
-                validation_issues += 1
-        
-        if validation_issues > 0:
-            st.warning(f"⚠️ Data validation: {validation_issues} records show inconsistent calculations (Remaining ≠ Received - Distributed)")
-        
-        st.success(f"✅ Successfully loaded {len(df)} records from GitHub")
         return df
         
-    except FileNotFoundError:
-        st.error("❌ GitHub file not found. Please check your URL.")
-        st.stop()
     except Exception as e:
-        st.error(f"❌ Error loading data from GitHub: {str(e)}")
-        st.error("Please check your GitHub URL and ensure the file is publicly accessible.")
+        st.error(f"❌ Error loading Excel file: {str(e)}")
+        st.error("Please check the URL and ensure the file is accessible.")
         st.stop()
 
 # Load data
-df = load_data_from_github()
+df = load_data_from_url()
+
+# Data preprocessing - map your actual columns
+st.markdown("### 🔧 Column Mapping")
+st.info("Please update the column mapping below to match your Excel file structure")
+
+# Let user see what columns are available and map them
+if len(df.columns) > 0:
+    st.write("**Available columns in your Excel file:**")
+    for i, col in enumerate(df.columns):
+        st.write(f"{i+1}. {col}")
+    
+    # Column mapping interface
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("**Select columns for mapping:**")
+        district_col = st.selectbox("District column:", df.columns, index=0)
+        chiefdom_col = st.selectbox("Chiefdom column:", df.columns, index=1 if len(df.columns) > 1 else 0)
+        phu_col = st.selectbox("PHU/PPS column:", df.columns, index=2 if len(df.columns) > 2 else 0)
+    
+    with col2:
+        st.markdown("**ITN data columns:**")
+        received_col = st.selectbox("Total ITNs Received column:", df.columns, index=3 if len(df.columns) > 3 else 0)
+        distributed_col = st.selectbox("Total ITNs Distributed column:", df.columns, index=4 if len(df.columns) > 4 else 0)
+        remaining_col = st.selectbox("Total ITNs Remaining column:", df.columns, index=5 if len(df.columns) > 5 else 0)
+    
+    # Apply column mapping
+    if st.button("🔄 Apply Column Mapping"):
+        try:
+            # Create new dataframe with mapped columns
+            df_mapped = pd.DataFrame({
+                'District': df[district_col],
+                'Chiefdom': df[chiefdom_col], 
+                'PHU/PPS': df[phu_col],
+                'Total ITNs Received': pd.to_numeric(df[received_col], errors='coerce').fillna(0),
+                'Total ITNs Distributed': pd.to_numeric(df[distributed_col], errors='coerce').fillna(0),
+                'Total ITNs Remaining': pd.to_numeric(df[remaining_col], errors='coerce').fillna(0)
+            })
+            
+            # Calculate distribution rate
+            df_mapped['Distribution Rate (%)'] = (df_mapped['Total ITNs Distributed'] / df_mapped['Total ITNs Received'] * 100).round(1)
+            
+            # Replace infinite values with 0
+            df_mapped['Distribution Rate (%)'] = df_mapped['Distribution Rate (%)'].replace([np.inf, -np.inf], 0)
+            
+            # Add last updated column
+            df_mapped['Last Updated'] = datetime.now()
+            
+            # Update the main dataframe
+            df = df_mapped
+            
+            st.success("✅ Column mapping applied successfully!")
+            
+            # Show preview of mapped data
+            st.write("**Preview of mapped data:**")
+            st.dataframe(df.head())
+            
+        except Exception as e:
+            st.error(f"❌ Error mapping columns: {str(e)}")
+            st.stop()
+else:
+    st.error("No columns found in the Excel file")
+    st.stop()
 
 # Main header
 st.markdown('<div class="main-header">🏥 ITN Distribution Tracker Dashboard</div>', unsafe_allow_html=True)
@@ -313,113 +332,114 @@ else:
         else:
             st.metric("📈 Avg Distribution Rate", "0.0%")
     
-    # Charts section
-    st.markdown("## 📊 Data Visualization")
+    # Summary Table based on grouping selection
+    st.markdown("## 📋 Summary Table")
     
-    # Create two columns for charts
-    col1, col2 = st.columns(2)
+    if grouping_selection == "District":
+        # District level summary
+        summary_table = filtered_df.groupby('District').agg({
+            'Total ITNs Received': 'sum',
+            'Total ITNs Distributed': 'sum',
+            'Total ITNs Remaining': 'sum'
+        }).reset_index()
+        
+        # Calculate distribution rate for each district
+        summary_table['Distribution Rate (%)'] = (summary_table['Total ITNs Distributed'] / summary_table['Total ITNs Received'] * 100).round(1)
+        
+        # Sort by Total ITNs Received (descending)
+        summary_table = summary_table.sort_values('Total ITNs Received', ascending=False)
+        
+        st.markdown("### 🗺️ Summary by District")
+        
+    elif grouping_selection == "Chiefdom":
+        # Chiefdom level summary
+        summary_table = filtered_df.groupby(['District', 'Chiefdom']).agg({
+            'Total ITNs Received': 'sum',
+            'Total ITNs Distributed': 'sum',
+            'Total ITNs Remaining': 'sum'
+        }).reset_index()
+        
+        # Calculate distribution rate for each chiefdom
+        summary_table['Distribution Rate (%)'] = (summary_table['Total ITNs Distributed'] / summary_table['Total ITNs Received'] * 100).round(1)
+        
+        # Sort by District, then by Total ITNs Received
+        summary_table = summary_table.sort_values(['District', 'Total ITNs Received'], ascending=[True, False])
+        
+        st.markdown("### 🏘️ Summary by Chiefdom")
+        
+    else:  # PHU/PPS level
+        # PHU/PPS level summary
+        summary_table = filtered_df.groupby(['District', 'Chiefdom', 'PHU/PPS']).agg({
+            'Total ITNs Received': 'sum',
+            'Total ITNs Distributed': 'sum',
+            'Total ITNs Remaining': 'sum'
+        }).reset_index()
+        
+        # Calculate distribution rate for each PHU/PPS
+        summary_table['Distribution Rate (%)'] = (summary_table['Total ITNs Distributed'] / summary_table['Total ITNs Received'] * 100).round(1)
+        
+        # Sort by District, Chiefdom, then by Total ITNs Received
+        summary_table = summary_table.sort_values(['District', 'Chiefdom', 'Total ITNs Received'], ascending=[True, True, False])
+        
+        st.markdown("### 🏥 Summary by PHU/PPS")
+    
+    # Display the summary table
+    st.dataframe(
+        summary_table,
+        use_container_width=True,
+        column_config={
+            'Distribution Rate (%)': st.column_config.ProgressColumn(
+                "Distribution Rate (%)",
+                help="Percentage of ITNs distributed",
+                min_value=0,
+                max_value=100,
+                format="%.1f%%"
+            ),
+            'Total ITNs Received': st.column_config.NumberColumn(
+                "Total ITNs Received",
+                format="%d"
+            ),
+            'Total ITNs Distributed': st.column_config.NumberColumn(
+                "Total ITNs Distributed", 
+                format="%d"
+            ),
+            'Total ITNs Remaining': st.column_config.NumberColumn(
+                "Total ITNs Remaining",
+                format="%d"
+            )
+        }
+    )
+    
+    # Summary statistics for the table
+    col1, col2, col3 = st.columns(3)
     
     with col1:
-        # Group data by selected level for visualization
-        if grouping_selection == "District":
-            grouped_data = filtered_df.groupby('District').agg({
-                'Total ITNs Received': 'sum',
-                'Total ITNs Distributed': 'sum',
-                'Total ITNs Remaining': 'sum'
-            }).reset_index()
-            x_column = 'District'
-            title = "📊 ITN Summary by District"
-        
-        elif grouping_selection == "Chiefdom":
-            grouped_data = filtered_df.groupby(['District', 'Chiefdom']).agg({
-                'Total ITNs Received': 'sum',
-                'Total ITNs Distributed': 'sum',
-                'Total ITNs Remaining': 'sum'
-            }).reset_index()
-            grouped_data['Display_Name'] = grouped_data['District'] + ' - ' + grouped_data['Chiefdom']
-            x_column = 'Display_Name'
-            title = "📊 ITN Summary by Chiefdom"
-        
-        else:  # PHU/PPS level
-            grouped_data = filtered_df.groupby(['District', 'Chiefdom', 'PHU/PPS']).agg({
-                'Total ITNs Received': 'sum',
-                'Total ITNs Distributed': 'sum',
-                'Total ITNs Remaining': 'sum'
-            }).reset_index()
-            grouped_data['Display_Name'] = grouped_data['District'] + ' - ' + grouped_data['PHU/PPS']
-            x_column = 'Display_Name'
-            title = "📊 ITN Summary by PHU/PPS"
-        
-        # Check if grouped data is empty
-        if grouped_data.empty:
-            st.warning(f"⚠️ No data available for {grouping_selection} level with current filters")
-            st.write("**Debug:** Check your data for the selected filters")
-        else:
-            # Show data summary for debugging
-            if st.sidebar.checkbox("Show Chart Data", value=False):
-                st.write(f"**Chart data for {grouping_selection} level:**")
-                st.dataframe(grouped_data)
-            
-            fig1 = px.bar(
-                grouped_data,
-                x=x_column,
-                y=['Total ITNs Received', 'Total ITNs Distributed', 'Total ITNs Remaining'],
-                title=title,
-                labels={'value': 'Number of ITNs', 'variable': 'Status'},
-                color_discrete_map={
-                    'Total ITNs Received': '#2E86AB',
-                    'Total ITNs Distributed': '#A23B72',
-                    'Total ITNs Remaining': '#F18F01'
-                }
-            )
-            fig1.update_layout(
-                xaxis_tickangle=-45,
-                xaxis_title=grouping_selection,
-                yaxis_title="Number of ITNs"
-            )
-            st.plotly_chart(fig1, use_container_width=True)
+        st.metric(f"📊 Total {grouping_selection}s", len(summary_table))
     
     with col2:
-        # Distribution rate by selected grouping level
-        if grouping_selection == "District":
-            rate_data = filtered_df.groupby('District')['Distribution Rate (%)'].mean().reset_index()
-            names_column = 'District'
-            title = "🎯 Distribution Rate by District"
-        
-        elif grouping_selection == "Chiefdom":
-            rate_data = filtered_df.groupby(['District', 'Chiefdom'])['Distribution Rate (%)'].mean().reset_index()
-            rate_data['Display_Name'] = rate_data['District'] + ' - ' + rate_data['Chiefdom']
-            names_column = 'Display_Name'
-            title = "🎯 Distribution Rate by Chiefdom"
-        
-        else:  # PHU/PPS level
-            rate_data = filtered_df.groupby(['District', 'PHU/PPS'])['Distribution Rate (%)'].mean().reset_index()
-            rate_data['Display_Name'] = rate_data['District'] + ' - ' + rate_data['PHU/PPS']
-            names_column = 'Display_Name'
-            title = "🎯 Distribution Rate by PHU/PPS"
-        
-        fig2 = px.pie(
-            rate_data,
-            values='Distribution Rate (%)',
-            names=names_column,
-            title=title
-        )
-        st.plotly_chart(fig2, use_container_width=True)
+        total_received_summary = summary_table['Total ITNs Received'].sum()
+        st.metric("📦 Grand Total Received", f"{total_received_summary:,}")
     
-    # Performance analysis
+    with col3:
+        total_distributed_summary = summary_table['Total ITNs Distributed'].sum()
+        st.metric("🎯 Grand Total Distributed", f"{total_distributed_summary:,}")
+    
+    # Export functionality for summary table
     col1, col2 = st.columns(2)
-    
     with col1:
-        # Top performers
-        st.markdown("### 🏆 Top Performing PHUs")
-        top_performers = filtered_df.nlargest(10, 'Distribution Rate (%)')[['PHU/PPS', 'District', 'Total ITNs Received', 'Total ITNs Distributed', 'Distribution Rate (%)']]
-        st.dataframe(top_performers, use_container_width=True)
+        if st.button(f"📥 Export {grouping_selection} Summary as CSV"):
+            csv = summary_table.to_csv(index=False)
+            st.download_button(
+                label="Download Summary CSV",
+                data=csv,
+                file_name=f"itn_summary_{grouping_selection.lower()}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                mime="text/csv"
+            )
     
     with col2:
-        # Largest operations
-        st.markdown("### 📦 Largest Operations")
-        largest_ops = filtered_df.nlargest(10, 'Total ITNs Received')[['PHU/PPS', 'District', 'Total ITNs Received', 'Total ITNs Distributed', 'Distribution Rate (%)']]
-        st.dataframe(largest_ops, use_container_width=True)
+        if summary_table['Total ITNs Received'].sum() > 0:
+            overall_rate = (summary_table['Total ITNs Distributed'].sum() / summary_table['Total ITNs Received'].sum() * 100)
+            st.metric("📈 Overall Distribution Rate", f"{overall_rate:.1f}%")
     
     # Detailed data table
     st.markdown("## 📋 Detailed Data Table")
