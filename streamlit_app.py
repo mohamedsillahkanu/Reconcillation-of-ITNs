@@ -51,11 +51,11 @@ def load_data_from_github():
     Replace the URL below with your actual GitHub CSV file
     """
     # REPLACE THIS URL with your actual GitHub raw CSV file URL
-    github_url = "SBD reconciliation.xlsx"
+    github_url = "https://raw.githubusercontent.com/yourusername/yourrepo/main/itn_data.csv"
     
     try:
         # Load from GitHub
-        df = pd.read_excel(github_url)
+        df = pd.read_csv(github_url)
         
         # Define your actual column names mapping
         expected_columns = {
@@ -125,7 +125,7 @@ st.markdown('<div class="main-header">🏥 ITN Distribution Tracker Dashboard</d
 # Data source information
 with st.expander("📁 Data Source Configuration"):
     st.markdown("""
-    **To use your own data from GitHub:**
+    **Setup Instructions:**
     
     1. **Upload your CSV file to GitHub** with these exact columns:
        - `District` - Administrative district name
@@ -136,55 +136,78 @@ with st.expander("📁 Data Source Configuration"):
        - `Total ITNs remaining after distribution`
     
     2. **Get the raw GitHub URL:**
-       - Go to your CSV file on GitHub
-       - Click "Raw" button
-       - Copy the URL (should start with `https://raw.githubusercontent.com/`)
+       - Go to your CSV file on GitHub → Click "Raw" → Copy URL
     
-    3. **Update the code:**
-       - Replace `github_url` variable in the `load_data_from_github()` function
-       - Example: `https://raw.githubusercontent.com/yourusername/yourrepo/main/itn_data.csv`
+    3. **Update line 32 in the code:**
+       ```python
+       github_url = "YOUR_GITHUB_RAW_URL_HERE"
+       ```
     
-    **Calculated Metric:**
-    - `Distribution Rate (%)` - (Distributed/Received)*100
+    **Auto-calculated:**
+    - `Distribution Rate (%)` = (Distributed/Received) × 100
     
-    **Data Validation:**
-    - ✅ Remaining = Received - Distributed
+    **Data validation:**
+    - Checks: Remaining = Received - Distributed
     
-    **Current Status:** ✅ Ready to use your data (update GitHub URL)
+    **Ready to load your real data!** 🚀
     """)
 
 # Sidebar filters
-st.sidebar.markdown('<div class="filter-section">', unsafe_allow_html=True)
-st.sidebar.header("🔍 Filters")
+st.sidebar.header("🔍 Filter Options")
 
-# District filter
-selected_districts = st.sidebar.multiselect(
-    "Select Districts",
-    options=sorted(df['District'].unique()),
-    default=sorted(df['District'].unique())
+# Create radio buttons to select which level to group by
+grouping_selection = st.sidebar.radio(
+    "Select the level for grouping:",
+    ["District", "Chiefdom", "PHU/PPS"],
+    index=0  # Default to 'District'
 )
 
-# Chiefdom filter (based on selected districts)
-if selected_districts:
-    available_chiefdoms = df[df['District'].isin(selected_districts)]['Chiefdom'].unique()
-    selected_chiefdoms = st.sidebar.multiselect(
-        "Select Chiefdoms",
-        options=sorted(available_chiefdoms),
-        default=sorted(available_chiefdoms)
-    )
-else:
-    selected_chiefdoms = []
+# Dictionary to define the hierarchy for each grouping level
+hierarchy = {
+    "District": ["District"],
+    "Chiefdom": ["District", "Chiefdom"], 
+    "PHU/PPS": ["District", "Chiefdom", "PHU/PPS"]
+}
 
-# PHU filter (based on selected chiefdoms)
-if selected_chiefdoms:
-    available_phus = df[df['Chiefdom'].isin(selected_chiefdoms)]['PHU/PPS'].unique()
-    selected_phus = st.sidebar.multiselect(
-        "Select PHUs/PPS",
-        options=sorted(available_phus),
-        default=sorted(available_phus)
-    )
-else:
-    selected_phus = []
+# Get the columns to show based on grouping selection
+grouping_columns = hierarchy[grouping_selection]
+
+# Dynamic filters based on hierarchy
+filtered_df = df.copy()
+
+# Apply filters in hierarchical order
+for i, column in enumerate(grouping_columns):
+    if i == 0:  # First level (District)
+        available_options = sorted(filtered_df[column].unique())
+        selected_options = st.sidebar.multiselect(
+            f"Select {column}(s)",
+            options=available_options,
+            default=available_options
+        )
+        filtered_df = filtered_df[filtered_df[column].isin(selected_options)]
+    
+    elif i == 1:  # Second level (Chiefdom)
+        if not filtered_df.empty:
+            available_options = sorted(filtered_df[column].unique())
+            selected_options = st.sidebar.multiselect(
+                f"Select {column}(s)",
+                options=available_options,
+                default=available_options
+            )
+            filtered_df = filtered_df[filtered_df[column].isin(selected_options)]
+    
+    elif i == 2:  # Third level (PHU/PPS)
+        if not filtered_df.empty:
+            available_options = sorted(filtered_df[column].unique())
+            selected_options = st.sidebar.multiselect(
+                f"Select {column}(s)",
+                options=available_options,
+                default=available_options
+            )
+            filtered_df = filtered_df[filtered_df[column].isin(selected_options)]
+
+# Additional filters
+st.sidebar.markdown("### 📊 Performance Filters")
 
 # Distribution rate filter
 min_rate, max_rate = st.sidebar.slider(
@@ -196,8 +219,6 @@ min_rate, max_rate = st.sidebar.slider(
 )
 
 # ITN quantity filters
-st.sidebar.markdown("### 📊 Quantity Filters")
-
 min_received, max_received = st.sidebar.slider(
     "Total ITNs Received Range",
     min_value=int(df['Total ITNs Received'].min()),
@@ -206,17 +227,12 @@ min_received, max_received = st.sidebar.slider(
     step=50
 )
 
-st.sidebar.markdown('</div>', unsafe_allow_html=True)
-
-# Filter data
-filtered_df = df[
-    (df['District'].isin(selected_districts)) &
-    (df['Chiefdom'].isin(selected_chiefdoms)) &
-    (df['PHU/PPS'].isin(selected_phus)) &
-    (df['Distribution Rate (%)'] >= min_rate) &
-    (df['Distribution Rate (%)'] <= max_rate) &
-    (df['Total ITNs Received'] >= min_received) &
-    (df['Total ITNs Received'] <= max_received)
+# Apply performance filters
+filtered_df = filtered_df[
+    (filtered_df['Distribution Rate (%)'] >= min_rate) &
+    (filtered_df['Distribution Rate (%)'] <= max_rate) &
+    (filtered_df['Total ITNs Received'] >= min_received) &
+    (filtered_df['Total ITNs Received'] <= max_received)
 ]
 
 # Main content
