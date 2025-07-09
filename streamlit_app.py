@@ -51,7 +51,7 @@ def load_data_from_github():
     Replace the URL below with your actual GitHub CSV file
     """
     # REPLACE THIS URL with your actual GitHub raw CSV file URL
-    github_url = ""
+    github_url = "SBD reconciliation.xlsx"
     
     try:
         # Load from GitHub
