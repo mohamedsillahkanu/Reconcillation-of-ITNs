@@ -51,7 +51,7 @@ def load_data_from_github():
     Replace the URL below with your actual GitHub CSV file
     """
     # REPLACE THIS URL with your actual GitHub raw CSV file URL
-    github_url = "SBD reconciliation.xlsx"
+    github_url = ""
     
     try:
         # Load from GitHub
@@ -238,8 +238,60 @@ filtered_df = filtered_df[
 # Main content
 if filtered_df.empty:
     st.warning("⚠️ No data available for the selected filters. Please adjust your filter criteria.")
+    
+    # Debug information
+    st.markdown("### 🔍 Debug Information")
+    st.write(f"Total records in original data: {len(df)}")
+    st.write(f"Unique districts in data: {sorted(df['District'].unique())}")
+    
+    if len(df) > 0:
+        st.write("Sample of original data:")
+        st.dataframe(df.head())
 else:
-    # Key metrics
+    # Debug section for data issues
+    if st.sidebar.checkbox("Show Debug Info", value=False):
+        st.markdown("### 🔍 Debug Information")
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.write("**Data Overview:**")
+            st.write(f"Total original records: {len(df)}")
+            st.write(f"Filtered records: {len(filtered_df)}")
+            st.write(f"Grouping level: {grouping_selection}")
+            
+            st.write("**Records by District:**")
+            district_counts = df['District'].value_counts().sort_index()
+            st.dataframe(district_counts)
+        
+        with col2:
+            st.write("**Data Quality Check:**")
+            # Check for missing values
+            missing_data = df.isnull().sum()
+            if missing_data.sum() > 0:
+                st.write("Missing values found:")
+                st.dataframe(missing_data[missing_data > 0])
+            else:
+                st.write("✅ No missing values")
+            
+            # Check for zero values
+            zero_received = (df['Total ITNs Received'] == 0).sum()
+            zero_distributed = (df['Total ITNs Distributed'] == 0).sum()
+            
+            st.write(f"Records with zero ITNs received: {zero_received}")
+            st.write(f"Records with zero ITNs distributed: {zero_distributed}")
+        
+        # Show sample data for problematic districts
+        st.write("**Sample data by district:**")
+        for district in sorted(df['District'].unique()):
+            district_data = df[df['District'] == district]
+            st.write(f"**{district}** ({len(district_data)} records):")
+            if len(district_data) > 0:
+                sample_data = district_data[['Chiefdom', 'PHU/PPS', 'Total ITNs Received', 'Total ITNs Distributed', 'Total ITNs Remaining']].head(3)
+                st.dataframe(sample_data, use_container_width=True)
+            else:
+                st.write("No data found")
+    
+    # Key metrics with additional validation
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
@@ -255,8 +307,11 @@ else:
         st.metric("📋 Total ITNs Remaining", f"{total_remaining:,}")
     
     with col4:
-        avg_distribution_rate = filtered_df['Distribution Rate (%)'].mean()
-        st.metric("📈 Avg Distribution Rate", f"{avg_distribution_rate:.1f}%")
+        if len(filtered_df) > 0:
+            avg_distribution_rate = filtered_df['Distribution Rate (%)'].mean()
+            st.metric("📈 Avg Distribution Rate", f"{avg_distribution_rate:.1f}%")
+        else:
+            st.metric("📈 Avg Distribution Rate", "0.0%")
     
     # Charts section
     st.markdown("## 📊 Data Visualization")
@@ -265,37 +320,89 @@ else:
     col1, col2 = st.columns(2)
     
     with col1:
-        # District-wise distribution chart
-        district_summary = filtered_df.groupby('District').agg({
-            'Total ITNs Received': 'sum',
-            'Total ITNs Distributed': 'sum',
-            'Total ITNs Remaining': 'sum'
-        }).reset_index()
+        # Group data by selected level for visualization
+        if grouping_selection == "District":
+            grouped_data = filtered_df.groupby('District').agg({
+                'Total ITNs Received': 'sum',
+                'Total ITNs Distributed': 'sum',
+                'Total ITNs Remaining': 'sum'
+            }).reset_index()
+            x_column = 'District'
+            title = "📊 ITN Summary by District"
         
-        fig1 = px.bar(
-            district_summary,
-            x='District',
-            y=['Total ITNs Received', 'Total ITNs Distributed', 'Total ITNs Remaining'],
-            title="📊 ITN Summary by District",
-            labels={'value': 'Number of ITNs', 'variable': 'Status'},
-            color_discrete_map={
-                'Total ITNs Received': '#2E86AB',
-                'Total ITNs Distributed': '#A23B72',
-                'Total ITNs Remaining': '#F18F01'
-            }
-        )
-        fig1.update_layout(xaxis_tickangle=-45)
-        st.plotly_chart(fig1, use_container_width=True)
+        elif grouping_selection == "Chiefdom":
+            grouped_data = filtered_df.groupby(['District', 'Chiefdom']).agg({
+                'Total ITNs Received': 'sum',
+                'Total ITNs Distributed': 'sum',
+                'Total ITNs Remaining': 'sum'
+            }).reset_index()
+            grouped_data['Display_Name'] = grouped_data['District'] + ' - ' + grouped_data['Chiefdom']
+            x_column = 'Display_Name'
+            title = "📊 ITN Summary by Chiefdom"
+        
+        else:  # PHU/PPS level
+            grouped_data = filtered_df.groupby(['District', 'Chiefdom', 'PHU/PPS']).agg({
+                'Total ITNs Received': 'sum',
+                'Total ITNs Distributed': 'sum',
+                'Total ITNs Remaining': 'sum'
+            }).reset_index()
+            grouped_data['Display_Name'] = grouped_data['District'] + ' - ' + grouped_data['PHU/PPS']
+            x_column = 'Display_Name'
+            title = "📊 ITN Summary by PHU/PPS"
+        
+        # Check if grouped data is empty
+        if grouped_data.empty:
+            st.warning(f"⚠️ No data available for {grouping_selection} level with current filters")
+            st.write("**Debug:** Check your data for the selected filters")
+        else:
+            # Show data summary for debugging
+            if st.sidebar.checkbox("Show Chart Data", value=False):
+                st.write(f"**Chart data for {grouping_selection} level:**")
+                st.dataframe(grouped_data)
+            
+            fig1 = px.bar(
+                grouped_data,
+                x=x_column,
+                y=['Total ITNs Received', 'Total ITNs Distributed', 'Total ITNs Remaining'],
+                title=title,
+                labels={'value': 'Number of ITNs', 'variable': 'Status'},
+                color_discrete_map={
+                    'Total ITNs Received': '#2E86AB',
+                    'Total ITNs Distributed': '#A23B72',
+                    'Total ITNs Remaining': '#F18F01'
+                }
+            )
+            fig1.update_layout(
+                xaxis_tickangle=-45,
+                xaxis_title=grouping_selection,
+                yaxis_title="Number of ITNs"
+            )
+            st.plotly_chart(fig1, use_container_width=True)
     
     with col2:
-        # Distribution rate by district
-        district_rate = filtered_df.groupby('District')['Distribution Rate (%)'].mean().reset_index()
+        # Distribution rate by selected grouping level
+        if grouping_selection == "District":
+            rate_data = filtered_df.groupby('District')['Distribution Rate (%)'].mean().reset_index()
+            names_column = 'District'
+            title = "🎯 Distribution Rate by District"
+        
+        elif grouping_selection == "Chiefdom":
+            rate_data = filtered_df.groupby(['District', 'Chiefdom'])['Distribution Rate (%)'].mean().reset_index()
+            rate_data['Display_Name'] = rate_data['District'] + ' - ' + rate_data['Chiefdom']
+            names_column = 'Display_Name'
+            title = "🎯 Distribution Rate by Chiefdom"
+        
+        else:  # PHU/PPS level
+            rate_data = filtered_df.groupby(['District', 'PHU/PPS'])['Distribution Rate (%)'].mean().reset_index()
+            rate_data['Display_Name'] = rate_data['District'] + ' - ' + rate_data['PHU/PPS']
+            names_column = 'Display_Name'
+            title = "🎯 Distribution Rate by PHU/PPS"
         
         fig2 = px.pie(
-            district_rate,
+            rate_data,
             values='Distribution Rate (%)',
-            names='District',
-            title="🎯 Distribution Rate by District"
+            names=names_column,
+            title=title
         )
         st.plotly_chart(fig2, use_container_width=True)
     
