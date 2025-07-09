@@ -50,7 +50,7 @@ def load_data_from_url():
     Load ITN data from Excel file URL
     """
     # Excel file URL
-    excel_url = "https://raw.githubusercontent.com/yourusername/yourrepo/main/SBD%20reconciliation.xlsx"
+    excel_url = "SBD reconciliation.xlsx"
     
     try:
         # Load Excel file from URL
