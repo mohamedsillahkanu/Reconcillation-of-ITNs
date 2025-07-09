@@ -33,24 +33,22 @@ def load_data_from_url():
     """
     Load ITN data from Excel file URL
     """
-    # Excel file URL - UPDATE THIS WITH YOUR ACTUAL URL
+    # Excel file - local file path
     excel_url = "SBD reconciliation.xlsx"
     
     try:
-        # Try different ways to load the Excel file
-        try:
-            # If it's a local file
-            df = pd.read_excel(excel_url)
-        except:
-            # If it's a URL
-            df = pd.read_excel(f"https://raw.githubusercontent.com/yourusername/yourrepo/main/{excel_url}")
-        
-        st.success(f"✅ Successfully loaded {len(df)} records from Excel file")
+        # Load the local Excel file
+        df = pd.read_excel(excel_url)
+        st.success(f"✅ Successfully loaded {len(df)} records from Excel file: {excel_url}")
         return df
         
+    except FileNotFoundError:
+        st.error(f"❌ File not found: {excel_url}")
+        st.error("Please ensure 'SBD reconciliation.xlsx' is in the same folder as your Python script.")
+        st.stop()
     except Exception as e:
         st.error(f"❌ Error loading Excel file: {str(e)}")
-        st.error("Please ensure the file is accessible or update the file path/URL.")
+        st.error("Please check that the file is a valid Excel file and not corrupted.")
         st.stop()
 
 # Load data
@@ -71,6 +69,12 @@ with col2:
 
 with col3:
     st.metric("📅 Last Updated", datetime.now().strftime("%Y-%m-%d %H:%M"))
+
+# Show all available columns
+st.markdown("### 📋 Available Columns")
+st.write("**Columns in your data:**")
+for i, col in enumerate(df.columns, 1):
+    st.write(f"{i}. **{col}**")
 
 # Create sidebar filters
 st.sidebar.header("🔍 Filter Options")
